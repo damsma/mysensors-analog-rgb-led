@@ -1,5 +1,5 @@
 // Enable debug prints to serial monitor
-#define MY_DEBUG
+//#define MY_DEBUG
 
 // Enable WiFi gateway
 #define MY_GATEWAY_ESP8266
@@ -9,13 +9,13 @@
 #define MY_BAUD_RATE 38400
 #endif
 
-#define MY_ESP8266_SSID "xxx"
-#define MY_ESP8266_PASSWORD "xxx"
+#define MY_WIFI_SSID "xxx"
+#define MY_WIFI_PASSWORD "xxx"
 
-#define CHILD_ID_LIGHT 1
+#define CHILD_ID_LIGHT 0
 
-#define SN "LED Strip"
-#define SV "2.0"
+#define SN "Analog LED Strip"
+#define SV "2.1"
 
 // Enable UDP communication
 //#define MY_USE_UDP
@@ -59,9 +59,17 @@
 
 #include <MySensors.h>
 
-MyMessage lightMsg(CHILD_ID_LIGHT, V_LIGHT);
+#define FOR_DOMOTICZ 1
+
+#if FOR_DOMOTICZ == 1
+  MyMessage lightMsg(CHILD_ID_LIGHT, V_LIGHT);
+  MyMessage dimmerMsg(CHILD_ID_LIGHT, V_DIMMER);
+#else
+  MyMessage lightMsg(CHILD_ID_LIGHT, V_STATUS);
+  MyMessage dimmerMsg(CHILD_ID_LIGHT, V_PERCENTAGE);
+#endif
+
 MyMessage rgbMsg(CHILD_ID_LIGHT, V_RGB);
-MyMessage dimmerMsg(CHILD_ID_LIGHT, V_DIMMER);
 
 byte red = 255;
 byte green = 255;
@@ -76,10 +84,6 @@ int dimmerlevel = 100;
 int fadespeed = 1000;
 int autofade_mode = 0;
 
-#define REDPIN 0
-#define GREENPIN 4
-#define BLUEPIN 5
-
 void setup()
 {
   // Output pins
@@ -92,7 +96,12 @@ void presentation()
 {
   // Send the Sketch Version Information to the Gateway
   sendSketchInfo(SN, SV);
-  present(CHILD_ID_LIGHT, S_RGBW_LIGHT);
+  if(FOR_DOMOTICZ == 1) {
+    present(CHILD_ID_LIGHT, S_RGBW_LIGHT);
+  }
+  else {
+    present(CHILD_ID_LIGHT, S_RGB_LIGHT);
+  }
 }
 
 
@@ -100,6 +109,9 @@ void loop()
 {
   static bool first_message_sent = false;
   if ( first_message_sent == false ) {
+    if(FOR_DOMOTICZ != 1) {
+      delay(15000);
+    }
     Serial.println( "Sending initial state..." );
     set_hw_status(0);
     send_status();
@@ -120,26 +132,11 @@ void receive(const MyMessage &message)
 {
   int val;
   
-  if (message.type == V_RGB) {
-    Serial.println( "V_RGB command: " );
-    Serial.println(message.data);
-    long number = (long) strtol( message.data, NULL, 16);
-
-    autofade_mode = 0;
-
-    // Save old value
-    strcpy(rgbstring, message.data);
-    
-    // Split it up into r, g, b values
-    red = number >> 16;
-    green = number >> 8 & 0xFF;
-    blue = number & 0xFF;
-
-    send_status();
-    set_hw_status(0);
-
-  } else if (message.type == V_RGBW) {    
-    Serial.println( "V_RGBW command: " );
+Serial.println( message.type );
+Serial.println( message.data );
+  if ((message.type == V_RGBW) || (message.type == V_RGB)) {    
+    Serial.println(message.type);
+    Serial.println( " command: " );
     Serial.println(message.data);
     long number = (long) strtol( message.data, NULL, 16);
 
@@ -151,9 +148,19 @@ void receive(const MyMessage &message)
     if (strlen(rgbstring) == 6) {
       Serial.println("new rgb value");
       // Split it up into r, g, b values
+
       red = number >> 16;
       green = number >> 8 & 0xFF;
       blue = number & 0xFF;
+    } else if (strlen(rgbstring) == 8) {
+      Serial.println("new rgbw value");
+      // Split it up into r, g, b values
+      red = fromhex (& rgbstring [7]);
+      green = fromhex (& rgbstring [7]);
+      blue = fromhex (& rgbstring [7]);
+      //ToDo: tutaj trzeba zlozyc stringa z r+g+b zeby nie mrugalo jak sie na biale przelacza
+      
+      //strcpy(rgbstring, message.data);
     } else if (strlen(rgbstring) == 9) {
       Serial.println("new rgbw value");
       // Split it up into r, g, b values
